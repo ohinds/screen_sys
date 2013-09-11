@@ -96,7 +96,7 @@ void show_cpu() {
 
   cout.width(5);
   cout.precision(1);
-  cout << percentage << endl;
+  cout << std::fixed << percentage << endl;
 }
 
 void show_mem() {
