@@ -136,6 +136,8 @@ void show_temperature(const string& station) {
 
   if(ret_val != 0) {
     cerr << "error getting weather for station " << station << endl;
+    cout << "ERR" << endl;
+    return;
   }
 
   string metar = read_and_unlink_file(temp_file);
@@ -143,11 +145,15 @@ void show_temperature(const string& station) {
   size_t temp_pos = metar.find("Temperature:");
   if(temp_pos == string::npos) {
     cerr << "error searching for temperature in METAR data" << endl;
-  }
+    cout << "ERR" << endl;
+    return;
+ }
 
   size_t paren_pos = metar.find("(", temp_pos);
   if(paren_pos == string::npos) {
     cerr << "error parsing temperature in METAR data" << endl;
+    cout << "ERR" << endl;
+    return;
   }
 
   size_t space_pos = metar.find(" ", paren_pos);
@@ -163,7 +169,8 @@ void show_temperature(const string& station) {
 int main(int argc, char** argv) {
 
   if(argc < 2) {
-    cout << "usage: screen_sys <mode> [refresh(s)]" << endl;
+    cout << "usage: screen_sys <mode> [refresh(s) or -1 to exit immediately]"
+         << endl;
     return 1;
   }
 
@@ -188,6 +195,10 @@ int main(int argc, char** argv) {
     }
     else {
       cerr << "unknown mode " << mode << endl;
+      break;
+    }
+
+    if(refresh == -1) {
       break;
     }
 
