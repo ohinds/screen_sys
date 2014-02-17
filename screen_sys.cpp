@@ -140,6 +140,18 @@ void show_temperature(const string& station) {
     return;
   }
 
+  ret_val =
+      system(("curl 'http://forecast.weather.gov/MapClick.php?"
+              "lat=42.36476&lon=-71.1032591&unit=1&FcstType=text&TextType=3'"
+              "| grep '<temp' | sed 's/.*\"F\">\([0-9]*\).*/\1/' > " +
+              temp_file).c_str());
+
+  if(ret_val != 0) {
+    cerr << "error getting weather for station " << station << endl;
+    cout << "ERR" << endl;
+    return;
+  }
+
   string metar = read_and_unlink_file(temp_file);
 
   size_t temp_pos = metar.find("Temperature:");
