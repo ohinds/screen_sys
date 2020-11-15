@@ -39,7 +39,6 @@ string read_file(const string& file) {
 
 string read_and_unlink_file(const string& file) {
   string ret = read_file(file);
-
   unlink(file.c_str());
 
   return ret;
@@ -128,23 +127,23 @@ void show_mem() {
 
 void show_temperature(const string& station) {
   string temp_file = temp_filename();
-
-  int ret_val =
-      system(("curl -s "
-              "http://weather.noaa.gov/pub/data/observations/metar/decoded/" +
-              station + ".TXT > " + temp_file).c_str());
-
-  if(ret_val != 0) {
-    cerr << "error getting weather for station " << station << endl;
-    cout << "ERR" << endl;
-    return;
-  }
-
-  ret_val =
-      system(("curl 'http://forecast.weather.gov/MapClick.php?"
-              "lat=42.36476&lon=-71.1032591&unit=1&FcstType=text&TextType=3'"
-              "| grep '<temp' | sed 's/.*\"F\">\([0-9]*\).*/\1/' > " +
-              temp_file).c_str());
+  string cmd = "curl -s "
+    "\"https://geo.weather.gc.ca/geomet/?"
+    "SERVICE=WMS&"
+    "VERSION=1.3.0&"
+    "REQUEST=GetFeatureInfo&"
+    "QUERY_LAYERS=GDPS.ETA_TT&"
+    "INFO_FORMAT=application/json&"
+    "i=5&"
+    "j=5&"
+    "EXCEPTIONS=xml&"
+    "LAYERS=GDPS.ETA_TT&"
+    "CRS=EPSG:4326&"
+    "BBOX=" + station + "&"
+    "WIDTH=10&"
+    "HEIGHT=10\""
+    " > " + temp_file;
+  int ret_val = system(cmd.c_str());
 
   if(ret_val != 0) {
     cerr << "error getting weather for station " << station << endl;
@@ -153,29 +152,29 @@ void show_temperature(const string& station) {
   }
 
   string metar = read_and_unlink_file(temp_file);
-
-  size_t temp_pos = metar.find("Temperature:");
+  string value_token = "\"value\": \"";
+  size_t temp_pos = metar.find(value_token);
   if(temp_pos == string::npos) {
     cerr << "error searching for temperature in METAR data" << endl;
     cout << "ERR" << endl;
     return;
  }
 
-  size_t paren_pos = metar.find("(", temp_pos);
-  if(paren_pos == string::npos) {
+  size_t quote_pos = metar.find("\"", temp_pos + value_token.length() + 1);
+  if(quote_pos == string::npos) {
     cerr << "error parsing temperature in METAR data" << endl;
     cout << "ERR" << endl;
     return;
   }
 
-  size_t space_pos = metar.find(" ", paren_pos);
-
-  string temperature = metar.substr(paren_pos + 1, space_pos - paren_pos - 1);
-
+  string temperature = metar.substr(temp_pos + value_token.length(), 8);
+  float cels = atof(temperature.c_str());
+  float fahr = cels * 9 / 5 + 32;
+  
   cout.precision(0);
   cout.setf(ios::fixed | ios::right);
   cout.width(5);
-  cout << temperature << endl;
+  cout << fahr << endl;
 }
 
 int main(int argc, char** argv) {
@@ -203,7 +202,7 @@ int main(int argc, char** argv) {
       show_mem();
     }
     else if(mode == "tmp") {
-      show_temperature("KBOS");
+      show_temperature("45.5,-73.6,45.6,-73.5");
     }
     else {
       cerr << "unknown mode " << mode << endl;
