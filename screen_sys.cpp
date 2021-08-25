@@ -40,7 +40,6 @@ string read_file(const string& file) {
 string read_and_unlink_file(const string& file) {
   string ret = read_file(file);
   unlink(file.c_str());
-
   return ret;
 }
 
@@ -99,25 +98,28 @@ void show_cpu() {
 }
 
 void show_mem() {
-  string temp_file = temp_filename();
+  string temp_file1 = temp_filename();
+  string temp_file2 = temp_filename();
 
-  int ret_val = system(("/usr/bin/free -m > " + temp_file).c_str());
-  if(ret_val != 0) {
+  int ret_val1 = system(("/usr/bin/free | grep '^Mem:' | awk '{print $2}' > " + temp_file1).c_str());
+  if(ret_val1 != 0) {
     cerr << "error running free" << endl;
     return;
   }
 
-  string mem = read_and_unlink_file(temp_file);
+  int ret_val2 = system(("/usr/bin/free | grep '^Mem:' | awk '{print $6}' > " + temp_file2).c_str());
+  if(ret_val2 != 0) {
+    cerr << "error running free" << endl;
+    return;
+  }
 
-  string total_search = "Mem:";
-  size_t total_pos = mem.find(total_search) + total_search.length() + 1;
+  string total_str = read_and_unlink_file(temp_file1);
   unsigned long total;
-  istringstream(mem.substr(total_pos)) >> total;
+  istringstream(total_str) >> total;
 
-  string used_search = "-/+ buffers/cache:";
-  size_t used_pos = mem.find(used_search) + used_search.length() + 1;
+  string used_str = read_and_unlink_file(temp_file2);
   unsigned long used;
-  istringstream(mem.substr(used_pos)) >> used;
+  istringstream(used_str) >> used;
 
   cout.width(5);
   cout.setf(ios::fixed | ios::right);
@@ -170,7 +172,7 @@ void show_temperature(const string& station) {
   string temperature = metar.substr(temp_pos + value_token.length(), 8);
   float cels = atof(temperature.c_str());
   float fahr = cels * 9 / 5 + 32;
-  
+
   cout.precision(0);
   cout.setf(ios::fixed | ios::right);
   cout.width(5);
