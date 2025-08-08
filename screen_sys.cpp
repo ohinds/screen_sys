@@ -45,13 +45,13 @@ string read_and_unlink_file(const string& file) {
 
 void show_battery() {
   float now;
-  istringstream(read_file("/sys/class/power_supply/BAT0/energy_now")) >> now;
+  istringstream(read_file("/sys/class/power_supply/battery/charge_counter")) >> now;
 
   float full;
-  istringstream(read_file("/sys/class/power_supply/BAT0/energy_full")) >> full;
+  istringstream(read_file("/sys/class/power_supply/battery/charge_full")) >> full;
 
   bool online;
-  istringstream(read_file("/sys/class/power_supply/AC/online")) >> online;
+  istringstream(read_file("/sys/class/power_supply/ac/online")) >> online;
 
   cout.width(3);
   cout << 100 * now / full
