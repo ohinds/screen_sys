@@ -9,46 +9,75 @@
 // - improve swap between modes
 // - add switch between C and F
 
-#include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <string>
 #include <unistd.h>
 
 using namespace std;
 
-string temp_filename() {
-  char name[] = "/tmp/screen_sys.XXXXXX";
-  mkstemp(name);
-  return string(name);
-}
+class Vmstat {
+public:
+  typedef map<string, unsigned long long> dict_t;
+
+  Vmstat() {
+    FILE* fp = popen("vmstat -s", "r");
+    if (!fp) return;
+    char buf[512];
+    while (fgets(buf, sizeof(buf), fp)) {
+      string line(buf);
+      if (!line.empty() && line.back() == '\n') line.pop_back();
+      parse_line(line);
+    }
+    pclose(fp);
+    for (const auto& p : data_)
+      cout << p.first << endl;
+  }
+
+  const dict_t& data() const { return data_; }
+  bool ok() const { return !data_.empty(); }
+
+private:
+  void parse_line(const string& line) {
+    istringstream iss(line);
+    unsigned long long val;
+    if (!(iss >> val)) return;
+    string token;
+    iss >> token;
+    // If token is a unit (K, KB, M, etc.), take the rest as key; else use token + rest as key
+    string rest;
+    getline(iss, rest);
+    while (!rest.empty() && (rest[0] == ' ' || rest[0] == '\t')) rest.erase(0, 1);
+    string key = token == "K" || token == "KB" || token == "M" || token == "MB" || token == "B"
+        ? rest : (token + " " + rest);
+    while (!key.empty() && (key.back() == ' ' || key.back() == '\t')) key.pop_back();
+    if (!key.empty())
+      data_[key] = val;
+  }
+
+  dict_t data_;
+};
 
 string read_file(const string& file) {
   ifstream in(file.c_str());
-
   string ret;
   while (in.good()) {
     string line;
     getline(in, line);
     ret += line;
   }
-
-  return ret;
-}
-
-string read_and_unlink_file(const string& file) {
-  string ret = read_file(file);
-  unlink(file.c_str());
   return ret;
 }
 
 void show_battery() {
   float now;
-  istringstream(read_file("/sys/class/power_supply/BAT0/energy_now")) >> now;
+  istringstream(read_file("/sys/class/power_supply/BAT0/charge_now")) >> now;
 
   float full;
-  istringstream(read_file("/sys/class/power_supply/BAT0/energy_full")) >> full;
+  istringstream(read_file("/sys/class/power_supply/BAT0/charge_full")) >> full;
 
   bool online;
   istringstream(read_file("/sys/class/power_supply/AC/online")) >> online;
@@ -58,68 +87,27 @@ void show_battery() {
        << (online ? "+" : "-") << endl;
 }
 
-void show_cpu() {
-  static unsigned long long last_user = 0;
-  static unsigned long long last_syst = 0;
-  static unsigned long long last_nice = 0;
-  static unsigned long long last_idle = 0;
+void show_cpu(const Vmstat& vmstat) {
+  const auto& data = vmstat.data();
+  unsigned long long user = data.at("non-nice user cpu ticks");
+  unsigned long long syst = data.at("system cpu ticks");
+  unsigned long long nice = data.at("nice user cpu ticks");
+  unsigned long long idle = data.at("idle cpu ticks");
 
-  string trash;
-  unsigned long long user;
-  unsigned long long syst;
-  unsigned long long nice;
-  unsigned long long idle;
-
-  istringstream ins(read_file("/proc/stat"));
-  ins >> trash;
-  ins >> user;
-  ins >> syst;
-  ins >> nice;
-  ins >> idle;
-
-  unsigned long long user_diff = user - last_user;
-  unsigned long long syst_diff = syst - last_syst;
-  unsigned long long nice_diff = nice - last_nice;
-  unsigned long long idle_diff = idle - last_idle;
-
-
-  float percentage = 100 *
-      static_cast<float>(user_diff + syst_diff + nice_diff) /
-      (user_diff + syst_diff + nice_diff + idle_diff);
-
-  last_user = user;
-  last_syst = syst;
-  last_nice= nice;
-  last_idle = idle;
+  float percentage = 100 * (user + syst + nice) / (user + syst + nice + idle);
 
   cout.width(5);
   cout.precision(1);
   cout << std::fixed << percentage << endl;
 }
 
-void show_mem() {
-  string temp_file1 = temp_filename();
-  string temp_file2 = temp_filename();
+void show_mem(const Vmstat& vmstat) {
+  const auto& data = vmstat.data();
+  unsigned long long total = data.at("total memory");
+  unsigned long long used = data.at("used memory");
+  unsigned long long free = data.at("free memory");
 
-  int ret_val1 = system(("/usr/bin/free | grep '^Mem:' | awk '{print $2}' > " + temp_file1).c_str());
-  if(ret_val1 != 0) {
-    cerr << "error running free" << endl;
-    return;
-  }
-
-  int ret_val2 = system(("/usr/bin/free | grep '^Mem:' | awk '{print $6}' > " + temp_file2).c_str());
-  if(ret_val2 != 0) {
-    cerr << "error running free" << endl;
-    return;
-  }
-
-  string total_str = read_and_unlink_file(temp_file1);
-  unsigned long total;
-  istringstream(total_str) >> total;
-
-  string used_str = read_and_unlink_file(temp_file2);
-  unsigned long used;
-  istringstream(used_str) >> used;
+  float percentage = 100 * used / total;
 
   cout.width(5);
   cout.setf(ios::fixed | ios::right);
@@ -128,20 +116,22 @@ void show_mem() {
 }
 
 void show_temperature(const string& station) {
-  string temp_file = "tmp"; //temp_filename();
   string cmd = "curl -s https://api.weather.gov/stations/" +
     station + "/observations/latest | grep -A 2 '\"temperature\"'"
-    " | tail -1 | awk '{printf \"%.0f\\n\", 9 / 5 * $2 + 32}' > " + temp_file;
-  int ret_val = system(cmd.c_str());
-
-  if(ret_val != 0) {
+    " | tail -1 | awk '{printf \"%.0f\\n\", 9 / 5 * $2 + 32}'";
+  FILE* fp = popen(cmd.c_str(), "r");
+  if (!fp) {
     cerr << "error getting weather for station " << station << endl;
     cout << "ERR" << endl;
     return;
   }
-
-  string metar = read_and_unlink_file(temp_file);
-  cout << metar << endl;
+  char buf[64];
+  if (fgets(buf, sizeof(buf), fp)) {
+    cout << buf;
+  } else {
+    cout << "ERR" << endl;
+  }
+  pclose(fp);
 }
 
 int main(int argc, char** argv) {
@@ -159,14 +149,17 @@ int main(int argc, char** argv) {
   }
 
   while(true) {
+
+    Vmstat vmstat;
+
     if(mode == "bat") {
       show_battery();
     }
     else if(mode == "cpu") {
-      show_cpu();
+      show_cpu(vmstat);
     }
     else if(mode == "mem") {
-      show_mem();
+      show_mem(vmstat);
     }
     else if(mode == "tmp") {
       show_temperature("UCCC1");
