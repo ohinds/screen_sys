@@ -33,8 +33,6 @@ public:
       parse_line(line);
     }
     pclose(fp);
-    for (const auto& p : data_)
-      cout << p.first << endl;
   }
 
   const dict_t& data() const { return data_; }
@@ -105,14 +103,11 @@ void show_mem(const Vmstat& vmstat) {
   const auto& data = vmstat.data();
   unsigned long long total = data.at("total memory");
   unsigned long long used = data.at("used memory");
-  unsigned long long free = data.at("free memory");
-
-  float percentage = 100 * used / total;
 
   cout.width(5);
   cout.setf(ios::fixed | ios::right);
   cout.precision(0);
-  cout << 100 * static_cast<float>(used) / total << endl;
+  cout << 100.f * used / total << endl;
 }
 
 void show_temperature(const string& station) {
@@ -149,17 +144,14 @@ int main(int argc, char** argv) {
   }
 
   while(true) {
-
-    Vmstat vmstat;
-
     if(mode == "bat") {
       show_battery();
     }
     else if(mode == "cpu") {
-      show_cpu(vmstat);
+      show_cpu(Vmstat());
     }
     else if(mode == "mem") {
-      show_mem(vmstat);
+      show_mem(Vmstat());
     }
     else if(mode == "tmp") {
       show_temperature("UCCC1");
