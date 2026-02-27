@@ -9,8 +9,6 @@
 // - improve swap between modes
 // - add switch between C and F
 
-#include <cstdio>
-#include <fstream>
 #include <iostream>
 #include <map>
 #include <regex>
@@ -129,7 +127,7 @@ void show_temperature(const string& station) {
   }
   char buf[64];
   if (fgets(buf, sizeof(buf), fp)) {
-    cout << buf;
+    cout << buf << endl;
   } else {
     cout << "ERR" << endl;
   }
