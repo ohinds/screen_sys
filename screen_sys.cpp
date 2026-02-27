@@ -13,26 +13,39 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <unistd.h>
 
 using namespace std;
 
+string run_command(const string &cmd) {
+  string result;
+  FILE* fp = popen(cmd.c_str(), "r");
+  if (!fp) return "";
+  char buf[512];
+  while (fgets(buf, sizeof(buf), fp)) {
+    string line(buf);
+    if (!line.empty() && line.back() == '\n') line.pop_back();
+    result += line + "\n";
+  }
+  pclose(fp);
+
+  return result;
+}
+
 class Vmstat {
 public:
   typedef map<string, unsigned long long> dict_t;
 
   Vmstat() {
-    FILE* fp = popen("vmstat -s", "r");
-    if (!fp) return;
-    char buf[512];
-    while (fgets(buf, sizeof(buf), fp)) {
-      string line(buf);
-      if (!line.empty() && line.back() == '\n') line.pop_back();
+    std::istringstream lines(run_command("vmstat -s"));
+
+    string line;
+    while (getline(lines, line)) {
       parse_line(line);
     }
-    pclose(fp);
   }
 
   const dict_t& data() const { return data_; }
@@ -59,30 +72,24 @@ private:
   dict_t data_;
 };
 
-string read_file(const string& file) {
-  ifstream in(file.c_str());
-  string ret;
-  while (in.good()) {
-    string line;
-    getline(in, line);
-    ret += line;
-  }
-  return ret;
-}
-
 void show_battery() {
-  float now;
-  istringstream(read_file("/sys/class/power_supply/BAT0/charge_now")) >> now;
+  string upower_result = run_command(
+    "upower -i $(upower -e | grep '/battery') | grep --color=never -E 'state|to full|to empty|percentage'");
 
-  float full;
-  istringstream(read_file("/sys/class/power_supply/BAT0/charge_full")) >> full;
+  regex state_re("state:\\s*([a-z]+)");
+  smatch state_match;
+  regex_search(upower_result, state_match, state_re);
 
-  bool online;
-  istringstream(read_file("/sys/class/power_supply/AC/online")) >> online;
+  regex time_re("time to .*:\\s*([a-z0-9\\ \\.]+)");
+  smatch time_match;
+  regex_search(upower_result, time_match, time_re);
 
-  cout.width(3);
-  cout << 100 * now / full
-       << (online ? "+" : "-") << endl;
+  regex pct_re("percentage:\\s*([0-9]+)\%");
+  smatch pct_match;
+  regex_search(upower_result, pct_match, pct_re);
+
+  cout << (state_match[1] == "discharging" ? "-" : "+")
+       << pct_match[1] << "% (" << time_match[1] << ")" << endl;
 }
 
 void show_cpu(const Vmstat& vmstat) {
